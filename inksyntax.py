@@ -220,6 +220,9 @@ class InkSyntaxEffect(inkex.Effect):
             'sym':   {'fill': '#000000'},
         }
         for txt in [x for x in group if x.tag == '{%s}text' % SVG_NS]:
+            # Modify the line spacing
+            line_spacing_factor = 0.65
+            txt.set('y', str(line_spacing_factor * float(txt.get('y'))))
             # Preserve white spaces
             txt.attrib['{%s}space' % XML_NS] = 'preserve'
             # Set the highlight color
