@@ -45,6 +45,7 @@ USE_WINDOWS = (platform.system() == "Windows")
 INKSYNTAX_NS = u"http://www.lyua.org/inkscape/extensions/inksyntax/"
 SVG_NS = u"http://www.w3.org/2000/svg"
 XLINK_NS = u"http://www.w3.org/1999/xlink"
+XML_NS = u"http://www.w3.org/XML/1998/namespace"
 
 ID_PREFIX = "inksyntax-"
 
@@ -199,6 +200,33 @@ class InkSyntaxEffect(inkex.Effect):
 
         # Remove the background rectangle
         del group[0]
+
+        # Apply a CSS style
+        group.set('style', formatStyle({'font-size': '10',
+                                        'font-family': 'Monospace'}))
+        style = {
+            'com':   {'fill': '#838183', 'font-style': 'italic'},
+            'dir':   {'fill': '#008200'},
+            'dstr':  {'fill': '#818100'},
+            'esc':   {'fill': '#ff00ff'},
+            'kwa':   {'fill': '#000000', 'font-weight': 'bold'},
+            'kwa':   {'fill': '#830000'},
+            'kwc':   {'fill': '#000000', 'font-weight': 'bold'},
+            'kwd':   {'fill': '#010181'},
+            'line':  {'fill': '#555555'},
+            'num':   {'fill': '#2228ff'},
+            'slc':   {'fill': '#838183', 'font-style': 'italic'},
+            'str':   {'fill': '#ff0000'},
+            'sym':   {'fill': '#000000'},
+        }
+        for txt in [x for x in group if x.tag == '{%s}text' % SVG_NS]:
+            # Preserve white spaces
+            txt.attrib['{%s}space' % XML_NS] = 'preserve'
+            # Set the highlight color
+            for tspan in [x for x in txt if x.tag == '{%s}tspan' % SVG_NS]:
+                cls = tspan.get('class')
+                if cls in style:
+                    tspan.set('style', formatStyle(style[cls]))
 
         # Set the attributes for modification
         group.attrib['{%s}text' % INKSYNTAX_NS] = text.encode('string-escape')
