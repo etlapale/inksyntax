@@ -210,7 +210,7 @@ class InkSyntaxEffect(inkex.Effect):
             'dstr':  {'fill': '#818100'},
             'esc':   {'fill': '#ff00ff'},
             'kwa':   {'fill': '#000000', 'font-weight': 'bold'},
-            'kwa':   {'fill': '#830000'},
+            'kwb':   {'fill': '#830000'},
             'kwc':   {'fill': '#000000', 'font-weight': 'bold'},
             'kwd':   {'fill': '#010181'},
             'line':  {'fill': '#555555'},
