@@ -87,13 +87,16 @@ if USE_GTK:
             
             self._ok = gtk.Button(stock=gtk.STOCK_OK)
             self._cancel = gtk.Button(stock=gtk.STOCK_CANCEL)
+
+            self.line_number = gtk.CheckButton('Line numbers')
     
             # layout
-            table = gtk.Table(2, 2, False)
+            table = gtk.Table(3, 2, False)
             table.attach(gtk.Label('Syntax:'), 0,1,0,1,xoptions=0,yoptions=gtk.FILL)
             table.attach(self.syntax,          1,2,0,1,yoptions=gtk.FILL)
-            table.attach(label3,               0,1,1,2,xoptions=0,yoptions=gtk.FILL)
-            table.attach(sw,                   1,2,1,2)
+            table.attach(self.line_number,     0,2,1,2,xoptions=0,yoptions=gtk.FILL)
+            table.attach(label3,               0,1,2,3,xoptions=0,yoptions=gtk.FILL)
+            table.attach(sw,                   1,2,2,3)
     
             vbox = gtk.VBox(False, 5)
             vbox.pack_start(table)
@@ -121,7 +124,8 @@ if USE_GTK:
             self._window = window
             gtk.main()
     
-            return self.syntax.get_text(), self.text
+            return self.syntax.get_text(), self.text, \
+                    self.line_number.get_active()
     
         def cb_delete_event(self, widget, event, data=None):
             gtk.main_quit()
@@ -144,7 +148,8 @@ if USE_GTK:
                                      buf.get_end_iter())
             
             try:
-                self.callback(self.syntax.get_text(), self.text)
+                self.callback(self.syntax.get_text(), self.text,
+                             self.line_number.get_active())
             except StandardError, e:
                 err_msg = traceback.format_exc()
                 dlg = gtk.Dialog("InkSyntax Error", self._window, 
@@ -188,11 +193,14 @@ class InkSyntaxEffect(inkex.Effect):
 
         # Query missing information
         asker = AskText(text)
-        asker.ask(lambda s, t: self.inserter(s, t))
+        asker.ask(lambda s, t, l: self.inserter(s, t, l))
 
-    def inserter(self, syntax, text):
+    def inserter(self, syntax, text, line_number=False):
         # Get SVG highlighted output
-        p = Popen(["highlight", "--syntax", syntax, "--svg"],
+        cmd = ["highlight", "--syntax", syntax, "--svg"]
+        if line_number:
+            cmd.append("--line-number")
+        p = Popen(cmd,
                   stdin=PIPE, stdout=PIPE)
         out = p.communicate(text)[0]
         tree = inkex.etree.parse(StringIO(out))
