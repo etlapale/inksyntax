@@ -189,7 +189,7 @@ class InkSyntaxEffect(inkex.Effect):
         src_lang = self.options.src_lang
 
         # Get previous highlighted text
-        text = ""
+        old_node, text = self.get_old()
 
         # Query missing information
         asker = AskText(text)
@@ -245,6 +245,17 @@ class InkSyntaxEffect(inkex.Effect):
         # Add the SVG group to the document
         svg = self.document.getroot()
         self.current_layer.append(group)
+
+    def get_old(self):
+        # Search amongst all selected <g> nodes
+        for node in [self.selected[i] for i in self.options.ids
+                     if self.selected[i].tag == '{%s}g' % SVG_NS]:
+            # Return first <g> with a inksyntax:text attribute
+            if '{%s}text' % INKSYNTAX_NS in node.attrib:
+                return (node,
+                        node.attrib.get('{%s}text' %
+                                        INKSYNTAX_NS).decode('string-escape'))
+        return None, ''
 
 if __name__ == '__main__':
     effect = InkSyntaxEffect()
