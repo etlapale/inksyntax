@@ -7,7 +7,7 @@ A source code syntax highlighter plugin for Inkscape.
 :author: Xīcò <xico@freeshell.org>
 '''
 
-__version__ = '0.1'
+__version__ = '0.1.1'
 
 import os
 import platform
