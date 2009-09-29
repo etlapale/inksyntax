@@ -24,12 +24,54 @@ import inkex
 from simplestyle import *
 from StringIO import StringIO
 
+
+# Search for available highlighter backend and languages
+
+USE_PYGMENTS = False
+try:
+    from pygments import highlight
+    import pygments.lexers
+    from pygments.formatters import SvgFormatter
+    pygments_langs = {}
+    for cls in pygments.lexers.LEXERS:
+        if cls.endswith('Lexer'):
+            pygments_langs[cls[:-5]] = getattr(pygments.lexers, cls)
+    USE_PYGMENTS = True
+except ImportError:
+    pass
+
+USE_HIGHLIGHT = False
+try:
+    p = Popen(['highlight', '--list-langs'], stdin=PIPE, stdout=PIPE)
+    out = p.communicate()[0]
+    # Get all available languages
+    highlight_langs = {}
+    for line in out.splitlines():
+        if line.isspace() \
+           or line.startswith('Installed language') \
+           or line.startswith('Use name') \
+           or not ':' in line:
+            continue
+        k, v = [x.strip() for x in line.split(':')]
+        if k and not k.isspace():
+            highlight_langs[k] = v
+    USE_HIGHLIGHT = True
+except OSError:
+    pass
+
+if not USE_PYGMENTS and not USE_HIGHLIGHT:
+    raise RuntimeError("No source highlighter found!")
+
+
+# Search for available GUI backends
+
 USE_GTK = False
 try:
     import pygtk
     pygtk.require('2.0')
     import gtk
     USE_GTK = True
+    import gobject
 except ImportError:
     pass
 
@@ -73,7 +115,27 @@ if USE_GTK:
             window.set_title("InkSyntax")
             window.set_default_size(600, 400)
 
-            self.syntax = gtk.Entry()
+            # Create a ComboBox for the available syntax
+            self.liststore = gtk.ListStore(str, object)
+            self.combobox = gtk.ComboBox(self.liststore)
+            cell = gtk.CellRendererText()
+            self.combobox.pack_start(cell, True)
+            self.combobox.add_attribute(cell, 'text', 0)
+
+            # Fill the syntax list
+            if USE_PYGMENTS:
+                langs = pygments_langs.keys()
+                langs.sort()
+                for name in langs:
+                    self.liststore.append([name + ' (Pygments)',
+                                           pygments_langs[name]])
+            if USE_HIGHLIGHT:
+                langs = highlight_langs.keys()
+                langs.sort()
+                for name in langs:
+                    self.liststore.append([name + ' (Highlight)',
+                                           highlight_langs[name]])
+            self.combobox.set_active(0)
     
             label3 = gtk.Label(u"Text:")
             
@@ -93,7 +155,7 @@ if USE_GTK:
             # layout
             table = gtk.Table(3, 2, False)
             table.attach(gtk.Label('Syntax:'), 0,1,0,1,xoptions=0,yoptions=gtk.FILL)
-            table.attach(self.syntax,          1,2,0,1,yoptions=gtk.FILL)
+            table.attach(self.combobox,        1,2,0,1,yoptions=gtk.FILL)
             table.attach(self.line_number,     0,2,1,2,xoptions=0,yoptions=gtk.FILL)
             table.attach(label3,               0,1,2,3,xoptions=0,yoptions=gtk.FILL)
             table.attach(sw,                   1,2,2,3)
@@ -124,9 +186,6 @@ if USE_GTK:
             self._window = window
             gtk.main()
     
-            return self.syntax.get_text(), self.text, \
-                    self.line_number.get_active()
-    
         def cb_delete_event(self, widget, event, data=None):
             gtk.main_quit()
             return False
@@ -148,8 +207,17 @@ if USE_GTK:
                                      buf.get_end_iter())
             
             try:
-                self.callback(self.syntax.get_text(), self.text,
-                             self.line_number.get_active())
+                # Fetch back the selected syntax
+                act = self.combobox.get_active()
+                if USE_PYGMENTS:
+                    pyglen = len(pygments_langs)
+                    if act < pyglen:
+                        stx = ('pygments', self.liststore[act][1])
+                    else:
+                        stx = ('highlight', self.liststore[act][1])
+                else:
+                    stx = ('highlight', self.liststore[act][1])
+                self.callback(stx, self.text, self.line_number.get_active())
             except StandardError, e:
                 err_msg = traceback.format_exc()
                 dlg = gtk.Dialog("InkSyntax Error", self._window, 
@@ -179,6 +247,7 @@ if USE_GTK:
 else:
     raise RuntimeError("PyGTK is not installed!")
 
+
 class InkSyntaxEffect(inkex.Effect):
     def __init__(self):
         inkex.Effect.__init__(self)
@@ -196,20 +265,57 @@ class InkSyntaxEffect(inkex.Effect):
         asker.ask(lambda s, t, l: self.inserter(s, t, l))
 
     def inserter(self, syntax, text, line_number=False):
-        # Get SVG highlighted output
-        cmd = ["highlight", "--syntax", syntax, "--svg"]
-        if line_number:
-            cmd.append("--line-number")
-        p = Popen(cmd,
-                  stdin=PIPE, stdout=PIPE)
-        out = p.communicate(text)[0]
-        tree = inkex.etree.parse(StringIO(out))
-        group = tree.getroot()[1]
+        stx_backend, stx = syntax
+
+        # Get SVG highlighted output as character string
+        if stx_backend == 'highlight':
+            cmd = ["highlight", "--syntax", stx, "--svg"]
+            if line_number:
+                cmd.append("--line-number")
+            p = Popen(cmd,
+                      stdin=PIPE, stdout=PIPE)
+            out = p.communicate(text)[0]
+        else:
+            out = highlight(text, stx(), SvgFormatter())
+
+        # Parse the SVG tree and get the group element
+        try:
+            tree = inkex.etree.parse(StringIO(out))
+        except inkex.etree.XMLSyntaxError:
+            # Hack for highlight 2.12
+            out2 = out.replace('</span>', '</tspan>')
+            tree = inkex.etree.parse(StringIO(out2))
+        group = tree.getroot().find('{%s}g' % SVG_NS)
 
         # Remove the background rectangle
-        del group[0]
+        if group[0].tag == '{%s}rect' % SVG_NS:
+            del group[0]
 
         # Apply a CSS style
+        if stx_backend == 'highlight':
+            self.apply_style_highlight(group)
+        else:
+            self.apply_style_pygments(group)
+
+        # Set the attributes for modification
+        group.attrib['{%s}text' % INKSYNTAX_NS] = text.encode('string-escape')
+
+        # Add the SVG group to the document
+        svg = self.document.getroot()
+        self.current_layer.append(group)
+
+    def get_old(self):
+        # Search amongst all selected <g> nodes
+        for node in [self.selected[i] for i in self.options.ids
+                     if self.selected[i].tag == '{%s}g' % SVG_NS]:
+            # Return first <g> with a inksyntax:text attribute
+            if '{%s}text' % INKSYNTAX_NS in node.attrib:
+                return (node,
+                        node.attrib.get('{%s}text' %
+                                        INKSYNTAX_NS).decode('string-escape'))
+        return None, ''
+
+    def apply_style_highlight(self, group):
         group.set('style', formatStyle({'font-size': '10',
                                         'font-family': 'Monospace'}))
         style = {
@@ -239,23 +345,8 @@ class InkSyntaxEffect(inkex.Effect):
                 if cls in style:
                     tspan.set('style', formatStyle(style[cls]))
 
-        # Set the attributes for modification
-        group.attrib['{%s}text' % INKSYNTAX_NS] = text.encode('string-escape')
-
-        # Add the SVG group to the document
-        svg = self.document.getroot()
-        self.current_layer.append(group)
-
-    def get_old(self):
-        # Search amongst all selected <g> nodes
-        for node in [self.selected[i] for i in self.options.ids
-                     if self.selected[i].tag == '{%s}g' % SVG_NS]:
-            # Return first <g> with a inksyntax:text attribute
-            if '{%s}text' % INKSYNTAX_NS in node.attrib:
-                return (node,
-                        node.attrib.get('{%s}text' %
-                                        INKSYNTAX_NS).decode('string-escape'))
-        return None, ''
+    def apply_style_pygments(self, group):
+        pass
 
 if __name__ == '__main__':
     effect = InkSyntaxEffect()
