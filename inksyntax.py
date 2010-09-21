@@ -72,6 +72,7 @@ try:
     import gtk
     USE_GTK = True
     import gobject
+    import pango
 except ImportError:
     pass
 
@@ -141,6 +142,8 @@ if USE_GTK:
             
             self._text = gtk.TextView()
             self._text.get_buffer().set_text(self.text)
+	    # Use monospaced font for input
+	    self._text.modify_font(pango.FontDescription('monospace'))
 
             sw = gtk.ScrolledWindow()
             sw.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
