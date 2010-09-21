@@ -154,14 +154,20 @@ if USE_GTK:
             self._cancel = gtk.Button(stock=gtk.STOCK_CANCEL)
 
             self.line_number = gtk.CheckButton('Line numbers')
+
+	    # Font selector
+	    fd = pango.FontDescription('monospace 12')
+	    self.font_field = gtk.FontButton(fd.to_string())
     
             # layout
-            table = gtk.Table(3, 2, False)
+            table = gtk.Table(4, 2, False)
             table.attach(gtk.Label('Syntax:'), 0,1,0,1,xoptions=0,yoptions=gtk.FILL)
             table.attach(self.combobox,        1,2,0,1,yoptions=gtk.FILL)
             table.attach(self.line_number,     0,2,1,2,xoptions=0,yoptions=gtk.FILL)
-            table.attach(label3,               0,1,2,3,xoptions=0,yoptions=gtk.FILL)
-            table.attach(sw,                   1,2,2,3)
+            table.attach(gtk.Label('Font:'),   0,1,2,3,xoptions=0,yoptions=gtk.FILL)
+            table.attach(self.font_field,      1,2,2,3,xoptions=0,yoptions=gtk.FILL)
+            table.attach(label3,               0,1,3,4,xoptions=0,yoptions=gtk.FILL)
+            table.attach(sw,                   1,2,3,4)
     
             vbox = gtk.VBox(False, 5)
             vbox.pack_start(table)
@@ -220,7 +226,11 @@ if USE_GTK:
                         stx = ('highlight', self.liststore[act][1])
                 else:
                     stx = ('highlight', self.liststore[act][1])
-                self.callback(stx, self.text, self.line_number.get_active())
+		props = {
+		    'lines': self.line_number.get_active(),
+		    'font': self.font_field.get_font_name(),
+		}
+                self.callback(stx, self.text, props)
             except StandardError, e:
                 err_msg = traceback.format_exc()
                 dlg = gtk.Dialog("InkSyntax Error", self._window, 
@@ -267,7 +277,9 @@ class InkSyntaxEffect(inkex.Effect):
         asker = AskText(text)
         asker.ask(lambda s, t, l: self.inserter(s, t, l))
 
-    def inserter(self, syntax, text, line_number=False):
+    def inserter(self, syntax, text, props):#line_number=False):
+    	line_number = props['lines']
+
         stx_backend, stx = syntax
 
         # Get SVG highlighted output as character string
@@ -306,6 +318,12 @@ class InkSyntaxEffect(inkex.Effect):
         # Add the SVG group to the document
         svg = self.document.getroot()
         self.current_layer.append(group)
+
+	# Try to apply properties
+	if 'font' in props:
+	    fd = pango.FontDescription(props['font'])
+	    group.set('style', formatStyle({'font-size': '%fpt' % (fd.get_size()/pango.SCALE),
+	                                    'font-family': fd.get_family()}))
 
     def get_old(self):
         # Search amongst all selected <g> nodes
