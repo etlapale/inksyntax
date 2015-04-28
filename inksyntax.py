@@ -4,10 +4,10 @@
 '''
 A source code syntax highlighter plugin for Inkscape.
 
-:author: Xīcò <xico@freeshell.org>
+:author: Émilien Tlapale <emilien@tlapale.com>
 '''
 
-__version__ = '0.1.1'
+__version__ = '0.1.2'
 
 import os
 import platform
@@ -23,6 +23,13 @@ sys.path.append(os.path.dirname(__file__))
 import inkex
 from simplestyle import *
 from StringIO import StringIO
+
+
+def hl_lang (s):
+  '''Return the main highlight language name.'''
+  if s.find ('(') < 0:
+    return s
+  return s[:s.find('(')].rstrip()
 
 
 # Search for available highlighter backend and languages
@@ -284,7 +291,12 @@ class InkSyntaxEffect(inkex.Effect):
 
         # Get SVG highlighted output as character string
         if stx_backend == 'highlight':
-            cmd = ["highlight", "--syntax", stx, "--svg"]
+	    # For highlight 2.x
+            #cmd = ["highlight", "--syntax", stx, "--svg"]
+	    # For highlight 3.x
+            cmd = ["highlight", "--syntax",
+                   hl_lang (stx), # Fix for hl 3.9
+                   "-O", "svg"]
             if line_number:
                 cmd.append("--line-number")
             p = Popen(cmd,
