@@ -1,6 +1,6 @@
 <inkscape-extension>
   <_name>InkSyntax</_name>
-  <id>org.lyua.inkscape.extensions.InkSyntax</id>
+  <id>org.atelo.inkscape.extensions.InkSyntax</id>
   <dependency type="executable" location="extensions">inksyntax.py</dependency>
   <dependency type="executable" location="extensions">inkex.py</dependency>
   <effect>

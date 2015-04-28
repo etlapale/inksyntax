@@ -1,6 +1,10 @@
 #! /usr/bin/env python
 # -*- coding: utf-8; -*-
 
+# Copyright (c) 2009–2014, Émilien Tlapale <emilien@tlapale.com>
+# Release under the Simplified BSD License (see LICENSE file)
+
+
 '''
 A source code syntax highlighter plugin for Inkscape.
 
