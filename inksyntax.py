@@ -92,7 +92,8 @@ try:
 except ImportError:
     pass
 
-INKSYNTAX_NS = u"http://www.lyua.org/inkscape/extensions/inksyntax/"
+INKSYNTAX_NS = u"http://inkscape.atelo.org"
+INKSYNTAX_OLD_NS = u"http://www.lyua.org/inkscape/extensions/inksyntax/"
 SVG_NS = u"http://www.w3.org/2000/svg"
 XLINK_NS = u"http://www.w3.org/1999/xlink"
 XML_NS = u"http://www.w3.org/XML/1998/namespace"
