@@ -1,17 +1,15 @@
 #! /usr/bin/env python
 # -*- coding: utf-8; -*-
 
-# Copyright (c) 2009–2014, Émilien Tlapale <emilien@tlapale.com>
+# Copyright (c) 2009–2015, Émilien Tlapale <emilien@tlapale.com>
 # Release under the Simplified BSD License (see LICENSE file)
 
 
 '''
 A source code syntax highlighter plugin for Inkscape.
-
-:author: Émilien Tlapale <emilien@tlapale.com>
 '''
 
-__version__ = '0.1.2'
+__version__ = '0.2'
 
 import os
 import platform
@@ -20,8 +18,15 @@ from subprocess import PIPE, Popen
 import traceback
 
 # Update PYTHONPATH for Inkscape plugins
-sys.path.append('/usr/share/inkscape/extensions')
-sys.path.append(r'c:/Program Files/Inkscape/share/extensions')
+try:
+  # Ask inkscape for its extension directory
+  p = Popen(['inkscape', '--extension-directory'], stdout=PIPE)
+  out = p.communicate()[0]
+  sys.path.append(out[0].strip())
+except OSError:
+  # Use some default directories
+  sys.path.append('/usr/share/inkscape/extensions')
+  sys.path.append(r'c:/Program Files/Inkscape/share/extensions')
 sys.path.append(os.path.dirname(__file__))
 
 import inkex
