@@ -147,7 +147,7 @@ def edit_fragment(text, callback):
         print('found it:', row)
         found = True
         break
-    lang_edit.set_icon_from_stock(Gtk.EntryIconPosition.PRIMARY,
+    lang_edit.set_icon_from_stock(Gtk.EntryIconPosition.SECONDARY,
                                   Gtk.STOCK_YES if found \
                                   else Gtk.STOCK_DIALOG_WARNING)
   lang_edit.connect('changed', on_lang_edit_changed)
