@@ -22,7 +22,7 @@ try:
   # Ask inkscape for its extension directory
   p = Popen(['inkscape', '--extension-directory'], stdout=PIPE)
   out = p.communicate()[0]
-  sys.path.append(out[0].strip())
+  sys.path.append(out.strip())
 except OSError:
   # Use some default directories
   sys.path.append('/usr/share/inkscape/extensions')
@@ -78,20 +78,6 @@ except OSError:
 if not USE_PYGMENTS and not USE_HIGHLIGHT:
     raise RuntimeError("No source highlighter found!")
 
-
-# Search for available GUI backends
-
-USE_GTK = False
-try:
-    import pygtk
-    pygtk.require('2.0')
-    import gtk
-    USE_GTK = True
-    import gobject
-    import pango
-except ImportError:
-    pass
-
 INKSYNTAX_NS = u"http://inkscape.atelo.org"
 INKSYNTAX_OLD_NS = u"http://www.lyua.org/inkscape/extensions/inksyntax/"
 SVG_NS = u"http://www.w3.org/2000/svg"
@@ -105,6 +91,11 @@ NSS = {
     u'svg': SVG_NS,
     u'xlink': XLINK_NS,
 }
+
+# Gtk3 GUI to edit code fragment and its properties
+from gi.repository import Gtk
+
+
 
 #---------------------------------------------------------------
 # GUI from TexText by Pauli Virtanen <pav@iki.fi> (BSD licensed)
