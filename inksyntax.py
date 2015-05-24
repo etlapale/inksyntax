@@ -135,12 +135,26 @@ def edit_fragment(text, callback):
   completion.set_model(liststore)
   completion.set_text_column(0)
   lang_edit.set_completion(completion)
+  def on_lang_edit_changed(ed):
+    '''
+    Callback when the language selection entry is modified.
+    '''
+    print('lang set to ' + ed.get_text())
+    found = False
+    for row in liststore:
+      # Language description found (entry is valid)
+      if row[0] == ed.get_text():
+        print('found it:', row)
+        found = True
+        break
+    lang_edit.set_icon_from_stock(Gtk.EntryIconPosition.PRIMARY,
+                                  Gtk.STOCK_YES if found \
+                                  else Gtk.STOCK_DIALOG_WARNING)
+  lang_edit.connect('changed', on_lang_edit_changed)
   lang_edit.set_hexpand(True)
   grid.attach_next_to(lang_edit, label, Gtk.PositionType.RIGHT, 1, 1)
   
-  #grid.pack_start(but, True, True, 0)
-  
-  #win.add_buttons(Gtk.STOCK_CANCEL, 0, Gtk.STOCK_OK, 1)
+    #win.add_buttons(Gtk.STOCK_CANCEL, 0, Gtk.STOCK_OK, 1)
 
   # Handler for button press
   #def on_response(dlg, resp_id):
@@ -184,8 +198,6 @@ if False:
     
             # layout
             table = gtk.Table(4, 2, False)
-            table.attach(gtk.Label('Syntax:'), 0,1,0,1,xoptions=0,yoptions=gtk.FILL)
-            table.attach(self.combobox,        1,2,0,1,yoptions=gtk.FILL)
             table.attach(self.line_number,     0,2,1,2,xoptions=0,yoptions=gtk.FILL)
             table.attach(gtk.Label('Font:'),   0,1,2,3,xoptions=0,yoptions=gtk.FILL)
             table.attach(self.font_field,      1,2,2,3,xoptions=0,yoptions=gtk.FILL)
