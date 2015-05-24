@@ -112,6 +112,7 @@ def edit_fragment(text, callback):
   grid.set_column_spacing(8)
   grid.set_column_homogeneous(False)
   win.add(grid)
+  win.connect('delete-event', Gtk.main_quit)
 
   # Language selector
   label = Gtk.Label()
