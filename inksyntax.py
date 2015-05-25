@@ -9,13 +9,15 @@
 A source code syntax highlighter plugin for Inkscape.
 '''
 
-__version__ = '0.2'
-
 import os
 import platform
 import sys
 from subprocess import PIPE, Popen
 import traceback
+
+from gi.repository import Gdk, Gtk, Pango
+
+__version__ = '0.2'
 
 # Update PYTHONPATH for Inkscape plugins
 try:
@@ -90,15 +92,23 @@ NSS = {
     u'xlink': XLINK_NS,
 }
 
-# Gtk3 GUI to edit code fragment and its properties
-from gi.repository import Gdk, Gtk, Pango
 
-# TODO: use a property argument for old properties
-
-def edit_fragment(text, callback):
+def search_highlighter(liststore, name):
   '''
-  Edit a text fragment.
+  Search an highlighter by name in a ListStore.
+  '''
+  for row in liststore:
+    if row[0] == name:
+      return liststore.get(row.iter, 1)
+  return None
 
+
+def edit_fragment(text='', highlighter='', callback=None):
+  '''
+  Launch a GUI window to edit a text fragment.
+
+  :param text:		Current text fragment content.
+  :param highlighter:	Current highlighter name.
   :param callback:	Called when the edit is finished.
   '''
 
@@ -141,16 +151,9 @@ def edit_fragment(text, callback):
   lang_edit.set_completion(completion)
   def on_lang_edit_changed(ed):
     '''
-    Callback when the language selection entry is modified.
+    Search for the language/highlighter pair on entry edit.
     '''
-    print('lang set to ' + ed.get_text())
-    found = False
-    for row in liststore:
-      # Language description found (entry is valid)
-      if row[0] == ed.get_text():
-        print('found it:', row)
-        found = True
-        break
+    found = search_highlighter(liststore, lang_edit.get_text()) != None
     lang_edit.set_icon_from_stock(Gtk.EntryIconPosition.SECONDARY,
                                   Gtk.STOCK_YES if found \
                                   else Gtk.STOCK_DIALOG_WARNING)
@@ -192,75 +195,25 @@ def edit_fragment(text, callback):
   box.pack_end(cancel_but, False, False, 0)
 
   # Callback on OK press
-  def on_ok():
-    pass
+  def on_ok(*args):
+    hname = lang_edit.get_text()
+    highlighter = search_highlighter(liststore, hname)
+    backend = 'pygments' if hname.endswith('(Pygments)') else 'highlight'
+    if callback is not None:
+      buf = view.get_buffer()
+      beg,end = buf.get_bounds()
+      callback(buf.get_text(beg, end, False),
+               backend=backend,
+               highlighter=highlighter,
+               line_numbers=line_box.get_active(),
+               font=font_button.get_font_name())
+      Gtk.main_quit()
   ok_but.connect('clicked', on_ok)
   
   # Launch the dialog
   win.activate_focus()
   win.show_all()
   Gtk.main()
-
-  
-  
-#---------------------------------------------------------------
-# GUI from TexText by Pauli Virtanen <pav@iki.fi> (BSD licensed)
-#---------------------------------------------------------------
-
-if False:     
-            window.connect("key-press-event", self.cb_key_press)
-            self._text.grab_focus()
-            #def cb_key_press(self, widget, event, data=None):
-            # ctrl+return clicks the ok button
-            #if gtk.gdk.keyval_name(event.keyval) == 'Return' \
-            #       and gtk.gdk.CONTROL_MASK & event.state:
-            #    self._ok.clicked()
-            #    return True
-            #return False
-        
-            #def cb_ok(self, widget, data=None):
-            #buf = self._text.get_buffer()
-            #self.text = buf.get_text(buf.get_start_iter(),
-            #                         buf.get_end_iter())
-            
-            try:
-                # Fetch back the selected syntax
-                act = self.combobox.get_active()
-                if HAVE_PYGMENTS:
-                    pyglen = len(pygments_langs)
-                    if act < pyglen:
-                        stx = ('pygments', self.liststore[act][1])
-                    else:
-                        stx = ('highlight', self.liststore[act][1])
-                else:
-                    stx = ('highlight', self.liststore[act][1])
-		props = {
-		    'lines': self.line_number.get_active(),
-		    'font': self.font_field.get_font_name(),
-		}
-                self.callback(stx, self.text, props)
-            except StandardError, e:
-                err_msg = traceback.format_exc()
-                dlg = gtk.Dialog("InkSyntax Error", self._window, 
-                                 gtk.DIALOG_MODAL)
-                dlg.set_default_size(600, 400)
-                btn = dlg.add_button(gtk.STOCK_OK, gtk.RESPONSE_CLOSE)
-                btn.connect("clicked", lambda w, d=None: dlg.destroy())
-                msg = gtk.Label()
-                msg.set_markup("<b>Error occurred while converting text to SVG:</b>")
-                
-                txtw = gtk.ScrolledWindow()
-                txtw.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
-                txtw.set_shadow_type(gtk.SHADOW_IN)
-                txt = gtk.TextView()
-                txt.set_editable(False)
-                txt.get_buffer().set_text(err_msg)
-                txtw.add(txt)
-                
-                dlg.vbox.pack_start(msg, expand=False, fill=True)
-                dlg.vbox.pack_start(txtw, expand=True, fill=True)
-                dlg.show_all()
-                dlg.run()
 
 
 class InkSyntaxEffect(inkex.Effect):
@@ -378,6 +331,8 @@ class InkSyntaxEffect(inkex.Effect):
 if __name__ == '__main__':
   # Standalone
   if len(sys.argv) == 1:
+    def cb(text, **kwds):
+      print(text, kwds)
     edit_fragment('''#include <iostream>
 
 int main()
@@ -385,7 +340,7 @@ int main()
   std::cout << "Hello world!" << std::endl;
   return 0;
 }
-''', None)
+''', callback=cb)
   # Called as a plugin
   else:
     effect = InkSyntaxEffect()
