@@ -21,6 +21,7 @@ Documentation
 	      
 .. toctree::
    :hidden:
+
    license
 
 Download
