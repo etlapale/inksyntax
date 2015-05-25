@@ -154,6 +154,7 @@ def edit_fragment(text='', highlighter='', callback=None):
     Search for the language/highlighter pair on entry edit.
     '''
     found = search_highlighter(liststore, lang_edit.get_text()) != None
+    ok_but.set_sensitive(found)
     lang_edit.set_icon_from_stock(Gtk.EntryIconPosition.SECONDARY,
                                   Gtk.STOCK_YES if found \
                                   else Gtk.STOCK_DIALOG_WARNING)
@@ -194,10 +195,17 @@ def edit_fragment(text='', highlighter='', callback=None):
   cancel_but.connect('clicked', Gtk.main_quit)
   box.pack_end(cancel_but, False, False, 0)
 
+  # Disable Ok by default
+  ok_but.set_sensitive(False)
+  lang_edit.set_icon_from_stock(Gtk.EntryIconPosition.SECONDARY,
+                                Gtk.STOCK_DIALOG_WARNING)
+
   # Callback on OK press
   def on_ok(*args):
     hname = lang_edit.get_text()
     highlighter = search_highlighter(liststore, hname)
+    if highlighter is None:
+      return
     backend = 'pygments' if hname.endswith('(Pygments)') else 'highlight'
     if callback is not None:
       buf = view.get_buffer()
