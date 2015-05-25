@@ -76,7 +76,7 @@ except OSError:
 if not HAVE_PYGMENTS and not HAVE_HIGHLIGHT:
     raise RuntimeError("No source highlighter found!")
 
-INKSYNTAX_NS = u"http://inkscape.atelo.org"
+INKSYNTAX_NS = u"http://inksyntax.atelo.org"
 INKSYNTAX_OLD_NS = u"http://www.lyua.org/inkscape/extensions/inksyntax/"
 SVG_NS = u"http://www.w3.org/2000/svg"
 XLINK_NS = u"http://www.w3.org/1999/xlink"
@@ -91,7 +91,7 @@ NSS = {
 }
 
 # Gtk3 GUI to edit code fragment and its properties
-from gi.repository import Gdk, Gtk
+from gi.repository import Gdk, Gtk, Pango
 
 # TODO: use a property argument for old properties
 
@@ -109,8 +109,12 @@ def edit_fragment(text, callback):
   win.set_keep_above(True)
   win.set_type_hint(Gdk.WindowTypeHint.DIALOG)
   grid = Gtk.Grid()
-  grid.set_column_spacing(8)
+  grid.set_orientation(Gtk.Orientation.VERTICAL)
+  grid.set_border_width(4)
+  grid.set_column_spacing(16)
+  grid.set_row_spacing(8)
   grid.set_column_homogeneous(False)
+  grid.set_row_homogeneous(False)
   win.add(grid)
   win.connect('delete-event', Gtk.main_quit)
 
@@ -153,14 +157,44 @@ def edit_fragment(text, callback):
   lang_edit.connect('changed', on_lang_edit_changed)
   lang_edit.set_hexpand(True)
   grid.attach_next_to(lang_edit, label, Gtk.PositionType.RIGHT, 1, 1)
-  
-    #win.add_buttons(Gtk.STOCK_CANCEL, 0, Gtk.STOCK_OK, 1)
 
-  # Handler for button press
-  #def on_response(dlg, resp_id):
-  #  print(dlg, resp_id)
-  #  Gtk.main_quit()
-  #win.connect("response", on_response)
+  # Text area
+  scroll = Gtk.ScrolledWindow()
+  scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+  scroll.set_shadow_type(Gtk.ShadowType.IN)
+  grid.attach_next_to(scroll, label, Gtk.PositionType.BOTTOM, 2, 1)
+  view = Gtk.TextView()
+  view.override_font(Pango.FontDescription.from_string('monospace 11'))
+  view.set_border_width(4)
+  view.get_buffer().set_text(text)
+  view.set_vexpand(True)
+  scroll.add(view)
+
+  # Line numbering
+  line_box = Gtk.CheckButton.new_with_label('Line numbering')
+  grid.add(line_box)
+
+  # Font
+  font_button = Gtk.FontButton.new_with_font('monospace 12')
+  font_button.set_hexpand(False)
+  grid.attach_next_to(font_button, line_box, Gtk.PositionType.RIGHT, 1, 1)
+
+  # Response buttons
+  box = Gtk.Box()
+  box.set_spacing(8)
+  grid.attach_next_to(box, line_box, Gtk.PositionType.BOTTOM, 2, 1)
+  ok_but = Gtk.Button.new_from_stock(Gtk.STOCK_OK)
+  ok_but.set_always_show_image(True)
+  box.pack_end(ok_but, False, False, 0)
+  cancel_but = Gtk.Button.new_from_stock(Gtk.STOCK_CANCEL)
+  cancel_but.set_always_show_image(True)
+  cancel_but.connect('clicked', Gtk.main_quit)
+  box.pack_end(cancel_but, False, False, 0)
+
+  # Callback on OK press
+  def on_ok():
+    pass
+  ok_but.connect('clicked', on_ok)
   
   # Launch the dialog
   win.activate_focus()
@@ -173,47 +207,9 @@ def edit_fragment(text, callback):
 # GUI from TexText by Pauli Virtanen <pav@iki.fi> (BSD licensed)
 #---------------------------------------------------------------
 
-if False:
-            # Fill the syntax list
-            label3 = gtk.Label(u"Text:")
-            
-            self._text = gtk.TextView()
-            self._text.get_buffer().set_text(self.text)
-	    # Use monospaced font for input
-	    self._text.modify_font(pango.FontDescription('monospace'))
-
-            sw = gtk.ScrolledWindow()
-            sw.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
-            sw.set_shadow_type(gtk.SHADOW_IN)
-            sw.add(self._text)
-            
-            self._ok = gtk.Button(stock=gtk.STOCK_OK)
-            self._cancel = gtk.Button(stock=gtk.STOCK_CANCEL)
-
-            self.line_number = gtk.CheckButton('Line numbers')
-
-	    # Font selector
-	    fd = pango.FontDescription('monospace 12')
-	    self.font_field = gtk.FontButton(fd.to_string())
-    
-            # layout
-            table = gtk.Table(4, 2, False)
-            table.attach(self.line_number,     0,2,1,2,xoptions=0,yoptions=gtk.FILL)
-            table.attach(gtk.Label('Font:'),   0,1,2,3,xoptions=0,yoptions=gtk.FILL)
-            table.attach(self.font_field,      1,2,2,3,xoptions=0,yoptions=gtk.FILL)
-            table.attach(label3,               0,1,3,4,xoptions=0,yoptions=gtk.FILL)
-            table.attach(sw,                   1,2,3,4)
-    
-    
+if False:     
             window.connect("key-press-event", self.cb_key_press)
-            self._ok.connect("clicked", self.cb_ok)
-            self._cancel.connect("clicked", self.cb_cancel)
-    
-
             self._text.grab_focus()
-
-
-
             #def cb_key_press(self, widget, event, data=None):
             # ctrl+return clicks the ok button
             #if gtk.gdk.keyval_name(event.keyval) == 'Return' \
@@ -382,7 +378,14 @@ class InkSyntaxEffect(inkex.Effect):
 if __name__ == '__main__':
   # Standalone
   if len(sys.argv) == 1:
-    edit_fragment('hello world\n', None)
+    edit_fragment('''#include <iostream>
+
+int main()
+{
+  std::cout << "Hello world!" << std::endl;
+  return 0;
+}
+''', None)
   # Called as a plugin
   else:
     effect = InkSyntaxEffect()
