@@ -9,13 +9,15 @@
 A source code syntax highlighter plugin for Inkscape.
 '''
 
-__version__ = '0.2'
-
 import os
 import platform
 import sys
 from subprocess import PIPE, Popen
 import traceback
+
+from gi.repository import Gdk, Gtk, Pango
+
+__version__ = '0.2'
 
 # Update PYTHONPATH for Inkscape plugins
 try:
@@ -33,30 +35,28 @@ import inkex
 from simplestyle import *
 from StringIO import StringIO
 
-
 def hl_lang (s):
   '''Return the main highlight language name.'''
   if s.find ('(') < 0:
     return s
   return s[:s.find('(')].rstrip()
 
-
 # Search for available highlighter backend and languages
 
-USE_PYGMENTS = False
+HAVE_PYGMENTS = False
 try:
-    from pygments import highlight
+    import pygments
     import pygments.lexers
     from pygments.formatters import SvgFormatter
     pygments_langs = {}
     for cls in pygments.lexers.LEXERS:
         if cls.endswith('Lexer'):
             pygments_langs[cls[:-5]] = getattr(pygments.lexers, cls)
-    USE_PYGMENTS = True
+    HAVE_PYGMENTS = True
 except ImportError:
     pass
 
-USE_HIGHLIGHT = False
+HAVE_HIGHLIGHT = False
 try:
     p = Popen(['highlight', '--list-langs'], stdin=PIPE, stdout=PIPE)
     out = p.communicate()[0]
@@ -71,14 +71,14 @@ try:
         k, v = [x.strip() for x in line.split(':')]
         if k and not k.isspace():
             highlight_langs[k] = v
-    USE_HIGHLIGHT = True
+    HAVE_HIGHLIGHT = True
 except OSError:
     pass
 
-if not USE_PYGMENTS and not USE_HIGHLIGHT:
+if not HAVE_PYGMENTS and not HAVE_HIGHLIGHT:
     raise RuntimeError("No source highlighter found!")
 
-INKSYNTAX_NS = u"http://inkscape.atelo.org"
+INKSYNTAX_NS = u"http://inksyntax.atelo.org"
 INKSYNTAX_OLD_NS = u"http://www.lyua.org/inkscape/extensions/inksyntax/"
 SVG_NS = u"http://www.w3.org/2000/svg"
 XLINK_NS = u"http://www.w3.org/1999/xlink"
@@ -92,172 +92,128 @@ NSS = {
     u'xlink': XLINK_NS,
 }
 
-# Gtk3 GUI to edit code fragment and its properties
-from gi.repository import Gtk
+
+def search_highlighter(liststore, name):
+  '''
+  Search an highlighter by name in a ListStore.
+  '''
+  for row in liststore:
+    if row[0] == name:
+      return liststore.get(row.iter, 1)[0]
+  return None
 
 
+def edit_fragment(text='', highlighter='', callback=None):
+  '''
+  Launch a GUI window to edit a text fragment.
 
-#---------------------------------------------------------------
-# GUI from TexText by Pauli Virtanen <pav@iki.fi> (BSD licensed)
-#---------------------------------------------------------------
+  :param text:		Current text fragment content.
+  :param highlighter:	Current highlighter name.
+  :param callback:	Called when the edit is finished.
+  '''
 
-if USE_GTK:
-    class AskText(object):
-        """GUI for editing TexText objects"""
-        def __init__(self, text):
-            self.text = text
-            self.callback = None
-    
-        def ask(self, callback):
-            self.callback = callback
-            
-            window = gtk.Window(gtk.WINDOW_TOPLEVEL)
-            window.set_title("InkSyntax")
-            window.set_default_size(600, 400)
+  # Setup a dialog to edit fragment
+  win = Gtk.Window.new(Gtk.WindowType.TOPLEVEL)
+  win.set_title("InkSyntax – Fragment editor")
+  win.set_default_size(600, 400)
+  win.set_keep_above(True)
+  win.set_type_hint(Gdk.WindowTypeHint.DIALOG)
+  grid = Gtk.Grid()
+  grid.set_orientation(Gtk.Orientation.VERTICAL)
+  grid.set_border_width(4)
+  grid.set_column_spacing(16)
+  grid.set_row_spacing(8)
+  grid.set_column_homogeneous(False)
+  grid.set_row_homogeneous(False)
+  win.add(grid)
+  win.connect('delete-event', Gtk.main_quit)
 
-            # Create a ComboBox for the available syntax
-            self.liststore = gtk.ListStore(str, object)
-            self.combobox = gtk.ComboBox(self.liststore)
-            cell = gtk.CellRendererText()
-            self.combobox.pack_start(cell, True)
-            self.combobox.add_attribute(cell, 'text', 0)
+  # Language selector
+  label = Gtk.Label()
+  label.set_markup('<b>Language</b>')
+  label.set_justify(Gtk.Justification.LEFT)
+  grid.add(label)
+  lang_edit = Gtk.Entry.new()
+  completion = Gtk.EntryCompletion()
+  liststore = Gtk.ListStore(str, object)
+  if HAVE_PYGMENTS:
+    langs = pygments_langs.keys()
+    langs.sort()
+    for name in langs:
+      liststore.append([name + ' (Pygments)', pygments_langs[name]])
+  if HAVE_HIGHLIGHT:
+    langs = highlight_langs.keys()
+    langs.sort()
+    for name in langs:
+      liststore.append([name + ' (Highlight)', highlight_langs[name]])
+  completion.set_model(liststore)
+  completion.set_text_column(0)
+  lang_edit.set_completion(completion)
+  def on_lang_edit_changed(ed):
+    '''
+    Search for the language/highlighter pair on entry edit.
+    '''
+    found = search_highlighter(liststore, lang_edit.get_text()) != None
+    lang_edit.set_icon_from_stock(Gtk.EntryIconPosition.SECONDARY,
+                                  Gtk.STOCK_YES if found \
+                                  else Gtk.STOCK_DIALOG_WARNING)
+  lang_edit.connect('changed', on_lang_edit_changed)
+  lang_edit.set_hexpand(True)
+  grid.attach_next_to(lang_edit, label, Gtk.PositionType.RIGHT, 1, 1)
 
-            # Fill the syntax list
-            if USE_PYGMENTS:
-                langs = pygments_langs.keys()
-                langs.sort()
-                for name in langs:
-                    self.liststore.append([name + ' (Pygments)',
-                                           pygments_langs[name]])
-            if USE_HIGHLIGHT:
-                langs = highlight_langs.keys()
-                langs.sort()
-                for name in langs:
-                    self.liststore.append([name + ' (Highlight)',
-                                           highlight_langs[name]])
-            self.combobox.set_active(0)
-    
-            label3 = gtk.Label(u"Text:")
-            
-            self._text = gtk.TextView()
-            self._text.get_buffer().set_text(self.text)
-	    # Use monospaced font for input
-	    self._text.modify_font(pango.FontDescription('monospace'))
+  # Text area
+  scroll = Gtk.ScrolledWindow()
+  scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+  scroll.set_shadow_type(Gtk.ShadowType.IN)
+  grid.attach_next_to(scroll, label, Gtk.PositionType.BOTTOM, 2, 1)
+  view = Gtk.TextView()
+  view.override_font(Pango.FontDescription.from_string('monospace 11'))
+  view.set_border_width(4)
+  view.get_buffer().set_text(text)
+  view.set_vexpand(True)
+  scroll.add(view)
 
-            sw = gtk.ScrolledWindow()
-            sw.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
-            sw.set_shadow_type(gtk.SHADOW_IN)
-            sw.add(self._text)
-            
-            self._ok = gtk.Button(stock=gtk.STOCK_OK)
-            self._cancel = gtk.Button(stock=gtk.STOCK_CANCEL)
+  # Line numbering
+  line_box = Gtk.CheckButton.new_with_label('Line numbering')
+  grid.add(line_box)
 
-            self.line_number = gtk.CheckButton('Line numbers')
+  # Font
+  font_button = Gtk.FontButton.new_with_font('monospace 12')
+  font_button.set_hexpand(False)
+  grid.attach_next_to(font_button, line_box, Gtk.PositionType.RIGHT, 1, 1)
 
-	    # Font selector
-	    fd = pango.FontDescription('monospace 12')
-	    self.font_field = gtk.FontButton(fd.to_string())
-    
-            # layout
-            table = gtk.Table(4, 2, False)
-            table.attach(gtk.Label('Syntax:'), 0,1,0,1,xoptions=0,yoptions=gtk.FILL)
-            table.attach(self.combobox,        1,2,0,1,yoptions=gtk.FILL)
-            table.attach(self.line_number,     0,2,1,2,xoptions=0,yoptions=gtk.FILL)
-            table.attach(gtk.Label('Font:'),   0,1,2,3,xoptions=0,yoptions=gtk.FILL)
-            table.attach(self.font_field,      1,2,2,3,xoptions=0,yoptions=gtk.FILL)
-            table.attach(label3,               0,1,3,4,xoptions=0,yoptions=gtk.FILL)
-            table.attach(sw,                   1,2,3,4)
-    
-            vbox = gtk.VBox(False, 5)
-            vbox.pack_start(table)
-            
-            hbox = gtk.HButtonBox()
-            hbox.add(self._ok)
-            hbox.add(self._cancel)
-            hbox.set_layout(gtk.BUTTONBOX_SPREAD)
-            
-            vbox.pack_end(hbox, expand=False, fill=False)
-    
-            window.add(vbox)
-    
-            # signals
-            window.connect("delete-event", self.cb_delete_event)
-            window.connect("key-press-event", self.cb_key_press)
-            self._ok.connect("clicked", self.cb_ok)
-            self._cancel.connect("clicked", self.cb_cancel)
-    
-            # show
-            window.show_all()
-            self._text.grab_focus()
+  # Response buttons
+  box = Gtk.Box()
+  box.set_spacing(8)
+  grid.attach_next_to(box, line_box, Gtk.PositionType.BOTTOM, 2, 1)
+  ok_but = Gtk.Button.new_from_stock(Gtk.STOCK_OK)
+  ok_but.set_always_show_image(True)
+  box.pack_end(ok_but, False, False, 0)
+  cancel_but = Gtk.Button.new_from_stock(Gtk.STOCK_CANCEL)
+  cancel_but.set_always_show_image(True)
+  cancel_but.connect('clicked', Gtk.main_quit)
+  box.pack_end(cancel_but, False, False, 0)
 
-            # run
-            self._window = window
-            gtk.main()
-    
-        def cb_delete_event(self, widget, event, data=None):
-            gtk.main_quit()
-            return False
-
-        def cb_key_press(self, widget, event, data=None):
-            # ctrl+return clicks the ok button
-            if gtk.gdk.keyval_name(event.keyval) == 'Return' \
-                   and gtk.gdk.CONTROL_MASK & event.state:
-                self._ok.clicked()
-                return True
-            return False
-        
-        def cb_cancel(self, widget, data=None):
-            raise SystemExit(1)
-        
-        def cb_ok(self, widget, data=None):
-            buf = self._text.get_buffer()
-            self.text = buf.get_text(buf.get_start_iter(),
-                                     buf.get_end_iter())
-            
-            try:
-                # Fetch back the selected syntax
-                act = self.combobox.get_active()
-                if USE_PYGMENTS:
-                    pyglen = len(pygments_langs)
-                    if act < pyglen:
-                        stx = ('pygments', self.liststore[act][1])
-                    else:
-                        stx = ('highlight', self.liststore[act][1])
-                else:
-                    stx = ('highlight', self.liststore[act][1])
-		props = {
-		    'lines': self.line_number.get_active(),
-		    'font': self.font_field.get_font_name(),
-		}
-                self.callback(stx, self.text, props)
-            except StandardError, e:
-                err_msg = traceback.format_exc()
-                dlg = gtk.Dialog("InkSyntax Error", self._window, 
-                                 gtk.DIALOG_MODAL)
-                dlg.set_default_size(600, 400)
-                btn = dlg.add_button(gtk.STOCK_OK, gtk.RESPONSE_CLOSE)
-                btn.connect("clicked", lambda w, d=None: dlg.destroy())
-                msg = gtk.Label()
-                msg.set_markup("<b>Error occurred while converting text to SVG:</b>")
-                
-                txtw = gtk.ScrolledWindow()
-                txtw.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
-                txtw.set_shadow_type(gtk.SHADOW_IN)
-                txt = gtk.TextView()
-                txt.set_editable(False)
-                txt.get_buffer().set_text(err_msg)
-                txtw.add(txt)
-                
-                dlg.vbox.pack_start(msg, expand=False, fill=True)
-                dlg.vbox.pack_start(txtw, expand=True, fill=True)
-                dlg.show_all()
-                dlg.run()
-                return False
-            
-            gtk.main_quit()
-            return False
-else:
-    raise RuntimeError("PyGTK is not installed!")
+  # Callback on OK press
+  def on_ok(*args):
+    hname = lang_edit.get_text()
+    highlighter = search_highlighter(liststore, hname)
+    backend = 'pygments' if hname.endswith('(Pygments)') else 'highlight'
+    if callback is not None:
+      buf = view.get_buffer()
+      beg,end = buf.get_bounds()
+      callback(buf.get_text(beg, end, False),
+               backend=backend,
+               highlighter=highlighter,
+               line_numbers=line_box.get_active(),
+               font=font_button.get_font_name())
+    Gtk.main_quit()
+  ok_but.connect('clicked', on_ok)
+  
+  # Launch the dialog
+  win.activate_focus()
+  win.show_all()
+  Gtk.main()
 
 
 class InkSyntaxEffect(inkex.Effect):
@@ -273,29 +229,24 @@ class InkSyntaxEffect(inkex.Effect):
         old_node, text = self.get_old()
 
         # Query missing information
-        asker = AskText(text)
-        asker.ask(lambda s, t, l: self.inserter(s, t, l))
+        edit_fragment(text, callback=self.inserter)
 
-    def inserter(self, syntax, text, props):#line_number=False):
-    	line_number = props['lines']
-
-        stx_backend, stx = syntax
-
+    def inserter(self, text, backend, highlighter,
+                 line_numbers=False, font=None):
         # Get SVG highlighted output as character string
-        if stx_backend == 'highlight':
+        if backend == 'highlight':
 	    # For highlight 2.x
             #cmd = ["highlight", "--syntax", stx, "--svg"]
 	    # For highlight 3.x
             cmd = ["highlight", "--syntax",
-                   hl_lang (stx), # Fix for hl 3.9
+                   hl_lang (highlighter), # Fix for hl 3.9
                    "-O", "svg"]
-            if line_number:
+            if line_numbers:
                 cmd.append("--line-number")
-            p = Popen(cmd,
-                      stdin=PIPE, stdout=PIPE)
+            p = Popen(cmd, stdin=PIPE, stdout=PIPE)
             out = p.communicate(text)[0]
         else:
-            out = highlight(text, stx(), SvgFormatter())
+            out = pygments.highlight(text, highlighter(), SvgFormatter())
 
         # Parse the SVG tree and get the group element
         try:
@@ -311,7 +262,7 @@ class InkSyntaxEffect(inkex.Effect):
             del group[0]
 
         # Apply a CSS style
-        if stx_backend == 'highlight':
+        if backend == 'highlight':
             self.apply_style_highlight(group)
         else:
             self.apply_style_pygments(group)
@@ -324,9 +275,9 @@ class InkSyntaxEffect(inkex.Effect):
         self.current_layer.append(group)
 
 	# Try to apply properties
-	if 'font' in props:
-	    fd = pango.FontDescription(props['font'])
-	    group.set('style', formatStyle({'font-size': '%fpt' % (fd.get_size()/pango.SCALE),
+	if font is not None:
+	    fd = Pango.FontDescription.from_string(font)
+	    group.set('style', formatStyle({'font-size': '%fpt' % (fd.get_size()/Pango.SCALE),
 	                                    'font-family': fd.get_family()}))
 
     def get_old(self):
@@ -338,6 +289,11 @@ class InkSyntaxEffect(inkex.Effect):
                 return (node,
                         node.attrib.get('{%s}text' %
                                         INKSYNTAX_NS).decode('string-escape'))
+            # Pre 0.2 NS compatibility
+            if '{%s}text' % INKSYNTAX_OLD_NS in node.attrib:
+                return (node,
+                        node.attrib.get('{%s}text' %
+                                        INKSYNTAX_OLD_NS).decode('string-escape'))
         return None, ''
 
     def apply_style_highlight(self, group):
@@ -374,5 +330,19 @@ class InkSyntaxEffect(inkex.Effect):
         pass
 
 if __name__ == '__main__':
+  # Standalone
+  if len(sys.argv) == 1:
+    def cb(text, **kwds):
+      print(text, kwds)
+    edit_fragment('''#include <iostream>
+
+int main()
+{
+  std::cout << "Hello world!" << std::endl;
+  return 0;
+}
+''', callback=cb)
+  # Called as a plugin
+  else:
     effect = InkSyntaxEffect()
     effect.affect()
