@@ -45,7 +45,7 @@ def hl_lang (s):
 
 HAVE_PYGMENTS = False
 try:
-    from pygments import highlight
+    import pygments
     import pygments.lexers
     from pygments.formatters import SvgFormatter
     pygments_langs = {}
@@ -99,7 +99,7 @@ def search_highlighter(liststore, name):
   '''
   for row in liststore:
     if row[0] == name:
-      return liststore.get(row.iter, 1)
+      return liststore.get(row.iter, 1)[0]
   return None
 
 
@@ -207,7 +207,7 @@ def edit_fragment(text='', highlighter='', callback=None):
                highlighter=highlighter,
                line_numbers=line_box.get_active(),
                font=font_button.get_font_name())
-      Gtk.main_quit()
+    Gtk.main_quit()
   ok_but.connect('clicked', on_ok)
   
   # Launch the dialog
@@ -229,28 +229,24 @@ class InkSyntaxEffect(inkex.Effect):
         old_node, text = self.get_old()
 
         # Query missing information
-        edit_fragment(text, self.inserter)
+        edit_fragment(text, callback=self.inserter)
 
-    def inserter(self, syntax, text, props):
-    	line_number = props['lines']
-
-        stx_backend, stx = syntax
-
+    def inserter(self, text, backend, highlighter,
+                 line_numbers=False, font=None):
         # Get SVG highlighted output as character string
-        if stx_backend == 'highlight':
+        if backend == 'highlight':
 	    # For highlight 2.x
             #cmd = ["highlight", "--syntax", stx, "--svg"]
 	    # For highlight 3.x
             cmd = ["highlight", "--syntax",
-                   hl_lang (stx), # Fix for hl 3.9
+                   hl_lang (highlighter), # Fix for hl 3.9
                    "-O", "svg"]
-            if line_number:
+            if line_numbers:
                 cmd.append("--line-number")
-            p = Popen(cmd,
-                      stdin=PIPE, stdout=PIPE)
+            p = Popen(cmd, stdin=PIPE, stdout=PIPE)
             out = p.communicate(text)[0]
         else:
-            out = highlight(text, stx(), SvgFormatter())
+            out = pygments.highlight(text, highlighter(), SvgFormatter())
 
         # Parse the SVG tree and get the group element
         try:
@@ -266,7 +262,7 @@ class InkSyntaxEffect(inkex.Effect):
             del group[0]
 
         # Apply a CSS style
-        if stx_backend == 'highlight':
+        if backend == 'highlight':
             self.apply_style_highlight(group)
         else:
             self.apply_style_pygments(group)
@@ -279,9 +275,9 @@ class InkSyntaxEffect(inkex.Effect):
         self.current_layer.append(group)
 
 	# Try to apply properties
-	if 'font' in props:
-	    fd = pango.FontDescription(props['font'])
-	    group.set('style', formatStyle({'font-size': '%fpt' % (fd.get_size()/pango.SCALE),
+	if font is not None:
+	    fd = Pango.FontDescription.from_string(font)
+	    group.set('style', formatStyle({'font-size': '%fpt' % (fd.get_size()/Pango.SCALE),
 	                                    'font-family': fd.get_family()}))
 
     def get_old(self):
@@ -293,6 +289,11 @@ class InkSyntaxEffect(inkex.Effect):
                 return (node,
                         node.attrib.get('{%s}text' %
                                         INKSYNTAX_NS).decode('string-escape'))
+            # Pre 0.2 NS compatibility
+            if '{%s}text' % INKSYNTAX_OLD_NS in node.attrib:
+                return (node,
+                        node.attrib.get('{%s}text' %
+                                        INKSYNTAX_OLD_NS).decode('string-escape'))
         return None, ''
 
     def apply_style_highlight(self, group):
