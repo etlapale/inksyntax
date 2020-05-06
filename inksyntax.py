@@ -49,9 +49,8 @@ try:
     import pygments.lexers
     from pygments.formatters import SvgFormatter
     pygments_langs = {}
-    for cls in pygments.lexers.LEXERS:
-        if cls.endswith('Lexer'):
-            pygments_langs[cls[:-5]] = getattr(pygments.lexers, cls)
+    for cls in pygments.lexers.get_all_lexers():
+        pygments_langs[cls[0]] = pygments.lexers.find_lexer_class(cls[0])
     HAVE_PYGMENTS = True
 except ImportError:
     pass
