@@ -16,6 +16,7 @@ import sys
 from subprocess import PIPE, Popen
 import traceback
 from lxml import etree
+import warnings
 
 import gi
 gi.require_version('Gdk', '3.0')
@@ -186,7 +187,9 @@ def edit_fragment(text='', highlighter='', callback=None):
   box = Gtk.Box()
   box.set_spacing(8)
   grid.attach_next_to(box, line_box, Gtk.PositionType.BOTTOM, 2, 1)
-  ok_but = Gtk.Button.new_from_stock(Gtk.STOCK_OK)
+  with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    ok_but = Gtk.Button.new_from_stock(Gtk.STOCK_OK)
   ok_but.set_always_show_image(True)
   box.pack_end(ok_but, False, False, 0)
   cancel_but = Gtk.Button.new_from_stock(Gtk.STOCK_CANCEL)
@@ -196,7 +199,9 @@ def edit_fragment(text='', highlighter='', callback=None):
 
   # Disable Ok by default
   ok_but.set_sensitive(False)
-  lang_edit.set_icon_from_stock(Gtk.EntryIconPosition.SECONDARY,
+  with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    lang_edit.set_icon_from_stock(Gtk.EntryIconPosition.SECONDARY,
                                 Gtk.STOCK_DIALOG_WARNING)
 
   # Callback on OK press
@@ -209,11 +214,15 @@ def edit_fragment(text='', highlighter='', callback=None):
     if callback is not None:
       buf = view.get_buffer()
       beg,end = buf.get_bounds()
+
+      with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        fontName = font_button.get_font_name()
       callback(buf.get_text(beg, end, False),
                backend=backend,
                highlighter=highlighter,
                line_numbers=line_box.get_active(),
-               font=font_button.get_font_name())
+               font=fontName)
     Gtk.main_quit()
   ok_but.connect('clicked', on_ok)
   
@@ -333,7 +342,7 @@ class InkSyntaxEffect(inkex.EffectExtension):
         pass
 
 if __name__ == '__main__':
-  # Standalone
+    # Standalone
   if len(sys.argv) == 1:
     def cb(text, **kwds):
       print(text, kwds)
