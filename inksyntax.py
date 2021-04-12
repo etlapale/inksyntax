@@ -9,31 +9,26 @@
 A source code syntax highlighter plugin for Inkscape.
 '''
 
+import codecs
 import os
 import platform
 import sys
 from subprocess import PIPE, Popen
 import traceback
+from lxml import etree
 
+import gi
+gi.require_version('Gdk', '3.0')
+gi.require_version('Gtk', '3.0')
 from gi.repository import Gdk, Gtk, Pango
 
 __version__ = '0.2'
 
-# Update PYTHONPATH for Inkscape plugins
-try:
-  # Ask inkscape for its extension directory
-  p = Popen(['inkscape', '--extension-directory'], stdout=PIPE)
-  out = p.communicate()[0]
-  sys.path.append(out.strip())
-except OSError:
-  # Use some default directories
-  sys.path.append('/usr/share/inkscape/extensions')
-  sys.path.append(r'c:/Program Files/Inkscape/share/extensions')
-sys.path.append(os.path.dirname(__file__))
-
 import inkex
 from simplestyle import *
-from StringIO import StringIO
+from io import StringIO
+
+# from inkex.utils import debug
 
 def hl_lang (s):
   '''Return the main highlight language name.'''
@@ -92,6 +87,11 @@ NSS = {
     u'xlink': XLINK_NS,
 }
 
+def decode(stringToDecode):
+  '''
+  Decode the given string and return it.
+  '''
+  return codecs.escape_decode(bytes(stringToDecode, "utf-8"))[0].decode("utf-8")
 
 def search_highlighter(liststore, name):
   '''
@@ -138,12 +138,12 @@ def edit_fragment(text='', highlighter='', callback=None):
   liststore = Gtk.ListStore(str, object)
   if HAVE_PYGMENTS:
     langs = pygments_langs.keys()
-    langs.sort()
+    langs = sorted(langs)
     for name in langs:
       liststore.append([name + ' (Pygments)', pygments_langs[name]])
   if HAVE_HIGHLIGHT:
     langs = highlight_langs.keys()
-    langs.sort()
+    langs = sorted(langs)
     for name in langs:
       liststore.append([name + ' (Highlight)', highlight_langs[name]])
   completion.set_model(liststore)
@@ -168,7 +168,6 @@ def edit_fragment(text='', highlighter='', callback=None):
   scroll.set_shadow_type(Gtk.ShadowType.IN)
   grid.attach_next_to(scroll, label, Gtk.PositionType.BOTTOM, 2, 1)
   view = Gtk.TextView()
-  view.override_font(Pango.FontDescription.from_string('monospace 11'))
   view.set_border_width(4)
   view.get_buffer().set_text(text)
   view.set_vexpand(True)
@@ -224,12 +223,10 @@ def edit_fragment(text='', highlighter='', callback=None):
   Gtk.main()
 
 
-class InkSyntaxEffect(inkex.Effect):
-    def __init__(self):
-        inkex.Effect.__init__(self)
-        self.OptionParser.add_option('-s', '--src-lang', action='store',
-                                     type='string', dest='src_lang',
-                                     default='txt', help='Source language')
+class InkSyntaxEffect(inkex.EffectExtension):
+    def add_arguments(self, pars):
+        pars.add_argument('-s', '--src-lang', type=str, default='txt', help='Source language')
+    
     def effect(self):
         src_lang = self.options.src_lang
 
@@ -243,9 +240,9 @@ class InkSyntaxEffect(inkex.Effect):
                  line_numbers=False, font=None):
         # Get SVG highlighted output as character string
         if backend == 'highlight':
-	    # For highlight 2.x
+      # For highlight 2.x
             #cmd = ["highlight", "--syntax", stx, "--svg"]
-	    # For highlight 3.x
+      # For highlight 3.x
             cmd = ["highlight", "--syntax",
                    hl_lang (highlighter), # Fix for hl 3.9
                    "-O", "svg"]
@@ -254,19 +251,20 @@ class InkSyntaxEffect(inkex.Effect):
             p = Popen(cmd, stdin=PIPE, stdout=PIPE)
             out = p.communicate(text)[0]
         else:
-            out = pygments.highlight(text, highlighter(), SvgFormatter())
+            out = pygments.highlight(text, highlighter(), SvgFormatter(linenos=line_numbers))
 
         # Parse the SVG tree and get the group element
         try:
-            tree = inkex.etree.parse(StringIO(out))
-        except inkex.etree.XMLSyntaxError:
+            tree = etree.parse(StringIO(out))
+        except etree.XMLSyntaxError:
             # Hack for highlight 2.12
             out2 = out.replace('</span>', '</tspan>')
-            tree = inkex.etree.parse(StringIO(out2))
-        group = tree.getroot().find('{%s}g' % SVG_NS)
+            tree = etree.parse(StringIO(out2))
+        group = tree.getroot().find(f"{{{SVG_NS}}}g")
+
 
         # Remove the background rectangle
-        if group[0].tag == '{%s}rect' % SVG_NS:
+        if group[0].tag == f"{{{SVG_NS}}}rect":
             del group[0]
 
         # Apply a CSS style
@@ -276,32 +274,29 @@ class InkSyntaxEffect(inkex.Effect):
             self.apply_style_pygments(group)
 
         # Set the attributes for modification
-        group.attrib['{%s}text' % INKSYNTAX_NS] = text.encode('string-escape')
+        group.attrib[f"{{{INKSYNTAX_NS}}}text"] = text
 
         # Add the SVG group to the document
         svg = self.document.getroot()
-        self.current_layer.append(group)
+        self.svg.get_current_layer().append(group)
 
-	# Try to apply properties
-	if font is not None:
-	    fd = Pango.FontDescription.from_string(font)
-	    group.set('style', formatStyle({'font-size': '%fpt' % (fd.get_size()/Pango.SCALE),
-	                                    'font-family': fd.get_family()}))
+        # Try to apply properties
+        if font is not None:
+            fd = Pango.FontDescription.from_string(font)
+            group.set('style', str(inkex.Style({'font-size': f"{(fd.get_size()/Pango.SCALE)}pt", 'font-family': fd.get_family()})))
 
     def get_old(self):
         # Search amongst all selected <g> nodes
-        for node in [self.selected[i] for i in self.options.ids
-                     if self.selected[i].tag == '{%s}g' % SVG_NS]:
+        for node in [self.svg.selected[i] for i in self.options.ids
+                     if self.svg.selected[i].tag == f"{{{SVG_NS}}}g"]:
             # Return first <g> with a inksyntax:text attribute
             if '{%s}text' % INKSYNTAX_NS in node.attrib:
                 return (node,
-                        node.attrib.get('{%s}text' %
-                                        INKSYNTAX_NS).decode('string-escape'))
+                        decode(node.attrib.get(f"{{{INKSYNTAX_NS}}}text")))
             # Pre 0.2 NS compatibility
             if '{%s}text' % INKSYNTAX_OLD_NS in node.attrib:
                 return (node,
-                        node.attrib.get('{%s}text' %
-                                        INKSYNTAX_OLD_NS).decode('string-escape'))
+                        decode(node.attrib.get(f"{{{INKSYNTAX_OLD_NS}}}text")))
         return None, ''
 
     def apply_style_highlight(self, group):
@@ -322,14 +317,14 @@ class InkSyntaxEffect(inkex.Effect):
             'str':   {'fill': '#ff0000'},
             'sym':   {'fill': '#000000'},
         }
-        for txt in [x for x in group if x.tag == '{%s}text' % SVG_NS]:
+        for txt in [x for x in group if x.tag == f"{{{SVG_NS}}}tex"]:
             # Modify the line spacing
             line_spacing_factor = 0.65
             txt.set('y', str(line_spacing_factor * float(txt.get('y'))))
             # Preserve white spaces
-            txt.attrib['{%s}space' % XML_NS] = 'preserve'
+            txt.attrib[f"{{{XML_NS}}}space"] = 'preserve'
             # Set the highlight color
-            for tspan in [x for x in txt if x.tag == '{%s}tspan' % SVG_NS]:
+            for tspan in [x for x in txt if x.tag == f"{{{SVG_NS}}}tspan"]:
                 cls = tspan.get('class')
                 if cls in style:
                     tspan.set('style', formatStyle(style[cls]))
@@ -352,5 +347,4 @@ int main()
 ''', callback=cb)
   # Called as a plugin
   else:
-    effect = InkSyntaxEffect()
-    effect.affect()
+    InkSyntaxEffect().run()
